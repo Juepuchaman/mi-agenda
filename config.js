@@ -1,7 +1,4 @@
-// Configuración de la app.
-// clientId: el "ID de cliente de OAuth" que crea Alejandro en Google Cloud
-// (tipo "Aplicación web"). No es una contraseña: es público por diseño.
 window.APP_CONFIG = {
-  clientId: "",
-  appName: "Mi Agenda",
+  clientId: "828230811553-o1ndnjjdajsojavqdks1djn6v11v3ke1.apps.googleusercontent.com",
+  appName: "Mi Agenda"
 };
