@@ -656,13 +656,21 @@ function shareSection() {
   const owned = S.calendars.filter(c => c.accessRole === 'owner');
   const sec = h('div', { class: 'section' }, h('h2', {}, 'Compartir un calendario'));
   if (!owned.length) { sec.append(h('div', { class: 'empty' }, 'No tienes calendarios propios para compartir.')); return sec; }
-  const cal = h('select', {}, owned.map(c => h('option', { value: c.id }, c.name)));
+  const ALL = '__all__';
+  const cal = h('select', {},
+    owned.length > 1 ? h('option', { value: ALL }, `Todos mis calendarios (${owned.length})`) : null,
+    owned.map(c => h('option', { value: c.id }, c.name)));
   const email = h('input', { type: 'email', placeholder: 'correo@ejemplo.com', autocomplete: 'email' });
-  const role = h('select', {}, h('option', { value: 'writer' }, 'Puede agregar y editar'), h('option', { value: 'reader' }, 'Solo puede ver'));
+  const role = h('select', {},
+    h('option', { value: 'freeBusyReader' }, 'Solo ve «Ocupado» (sin detalles)'),
+    h('option', { value: 'writer' }, 'Puede agregar y editar'),
+    h('option', { value: 'reader' }, 'Ve todos los detalles'));
+  const targets = () => cal.value === ALL ? owned.map(c => c.id) : [cal.value];
   const list = h('div', { class: 'card', style: 'margin-top:10px' });
   const roles = { owner: 'Dueño', writer: 'Edita', reader: 'Ve', freeBusyReader: 'Ocupado/libre' };
 
   const loadAcl = async () => {
+    if (cal.value === ALL) { list.replaceChildren(h('div', { class: 'empty' }, 'Elige un calendario para ver quién tiene acceso.')); return; }
     list.replaceChildren(h('div', { class: 'empty' }, 'Cargando personas…'));
     try {
       const r = await api(`${CAL}/calendars/${encodeURIComponent(cal.value)}/acl`);
@@ -682,15 +690,31 @@ function shareSection() {
   setTimeout(loadAcl, 0);
 
   sec.append(
+    h('div', { class: 'note', style: 'margin-bottom:10px' },
+      h('p', {}, h('b', {}, 'Solo «Ocupado»: '), 'la persona ve los bloques de tiempo ocupados, sin título ni detalles, sean personales o de trabajo. Las reuniones donde ella está invitada sí las ve completas.'),
+      h('p', {}, 'Para que vean tu horario laboral de 7:00 a 18:00, actívalo en ',
+        h('a', { href: 'https://calendar.google.com/calendar/r/settings', target: '_blank', rel: 'noopener' }, 'Google Calendar → Configuración → Horario laboral'), '.')),
     h('label', { class: 'field' }, h('span', {}, 'Calendario'), cal),
     h('label', { class: 'field' }, h('span', {}, 'Persona'), email),
     h('label', { class: 'field' }, h('span', {}, 'Permiso'), role),
     h('div', { class: 'actions' }, h('span', { class: 'grow' }), h('button', { class: 'btn primary', onclick: async () => {
       const v = email.value.trim();
       if (!/^\S+@\S+\.\S+$/.test(v)) return toast('Escribe un correo válido');
-      await busy(() => api(`${CAL}/calendars/${encodeURIComponent(cal.value)}/acl?sendNotifications=true`,
-        { method: 'POST', body: { role: role.value, scope: { type: 'user', value: v } } })).catch(() => {});
-      email.value = ''; toast('Calendario compartido. Google le avisa por correo.'); loadAcl();
+      const ids = targets();
+      let ok = 0;
+      await busy(async () => {
+        for (const id of ids) {
+          try {
+            await api(`${CAL}/calendars/${encodeURIComponent(id)}/acl?sendNotifications=${ids.length === 1}`,
+              { method: 'POST', body: { role: role.value, scope: { type: 'user', value: v } } });
+            ok++;
+          } catch (e) { /* sigue con los demás */ }
+        }
+      });
+      email.value = '';
+      toast(ok === ids.length ? (ids.length > 1 ? `Compartidos ${ok} calendarios.` : 'Calendario compartido. Google le avisa por correo.')
+        : `Compartí ${ok} de ${ids.length}. Revisa los que faltan.`);
+      loadAcl();
     } }, 'Compartir')),
     list);
   return sec;
